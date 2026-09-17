@@ -4,6 +4,10 @@ A simple authentication system built with Next.js, PostgreSQL, Prisma, Zod, Reac
 
 The project includes user registration and login with server-side validation, password hashing, database integration, and a simple responsive UI built with shadcn/ui.
 
+## Live Link
+
+[https://intern-evaluation-2zu3.vercel.app/](https://intern-evaluation-2zu3.vercel.app/)
+
 ## Features
 
 - User registration
