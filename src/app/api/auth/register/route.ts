@@ -1,65 +1,79 @@
-import { NextResponse } from "next/server";
-import { registerSchema } from "@/modules/auth/auth.validation";
-import { authService } from "@/modules/auth/auth.service";
-import z from "zod";
+import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+import { connectDB } from '@/lib/db';
+import { User, IUser } from '@/models/User';
 
-export async function POST(request: Request) {
+interface RegisterRequestBody {
+  name?: string;
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+}
+
+export async function POST(req: Request): Promise<NextResponse> {
   try {
-    const body = await request.json();
+    const body: RegisterRequestBody = await req.json();
+    const { name, email, password, confirmPassword } = body;
 
-    const validatedData = registerSchema.parse(body);
+    if (!name || !email || !password || !confirmPassword) {
+      return NextResponse.json(
+        { error: 'All fields are required' },
+        { status: 400 }
+      );
+    }
 
-    const user = await authService.registerUser(validatedData);
+    if (password !== confirmPassword) {
+      return NextResponse.json(
+        { error: 'Passwords do not match' },
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'Password must be at least 6 characters long' },
+        { status: 400 }
+      );
+    }
+
+    await connectDB();
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const existingUser = (await User.findOne({ email: normalizedEmail }).exec()) as IUser | null;
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: 'User with this email already exists' },
+        { status: 400 }
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser: IUser = await User.create({
+      name,
+      email: normalizedEmail,
+      password: hashedPassword,
+    });
 
     return NextResponse.json(
       {
-        success: true,
-        message: "Registration successful",
-        data: user,
+        message: 'User registered successfully',
+        user: {
+          id: newUser._id,
+          name: newUser.name,
+          email: newUser.email,
+        },
       },
-      { status: 201 },
+      { status: 201 }
     );
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid JSON body",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: z.flattenError(error).fieldErrors,
-        },
-        { status: 400 },
-      );
-    }
-
-    if (
-      error instanceof Error &&
-      error.message === "User already exists with this email"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: error.message,
-        },
-        { status: 409 },
-      );
-    }
+  } catch (error: unknown) {
+    console.error('Register Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Internal Server Error';
 
     return NextResponse.json(
-      {
-        success: false,
-        message: "Something went wrong",
-      },
-      { status: 500 },
+      { error: errorMessage },
+      { status: 500 }
     );
   }
 }

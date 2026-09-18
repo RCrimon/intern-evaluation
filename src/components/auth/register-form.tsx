@@ -3,22 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 
 const registerFormSchema = z
   .object({
     name: z.string().trim().min(2, "Name must be at least 2 characters"),
-
-    email: z.email("Invalid email address"),
-
-    password: z.string().min(8, "Password must be at least 8 characters"),
-
+    email: z.string().email("Invalid email address"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(1, "Please confirm your password"),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -27,12 +19,10 @@ const registerFormSchema = z
   });
 
 type RegisterFormData = z.infer<typeof registerFormSchema>;
-
 type FieldName = keyof RegisterFormData;
 
 export default function RegisterForm() {
   const router = useRouter();
-
   const [serverError, setServerError] = useState("");
 
   const {
@@ -40,38 +30,22 @@ export default function RegisterForm() {
     handleSubmit,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<RegisterFormData>();
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerFormSchema), // Zod resolver যুক্ত করা হয়েছে
+  });
 
   const onSubmit = async (data: RegisterFormData) => {
     setServerError("");
 
-    const validationResult = registerFormSchema.safeParse(data);
-
-    if (!validationResult.success) {
-      validationResult.error.issues.forEach((issue) => {
-        const field = issue.path[0] as FieldName;
-
-        if (field) {
-          setError(field, {
-            type: "manual",
-            message: issue.message,
-          });
-        }
-      });
-
-      return;
-    }
-
     try {
       const response = await fetch("/api/auth/register", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: data.name,
           email: data.email,
           password: data.password,
+          confirmPassword: data.confirmPassword,
         }),
       });
 
@@ -81,121 +55,104 @@ export default function RegisterForm() {
         if (result.errors) {
           Object.entries(result.errors).forEach(([field, messages]) => {
             const fieldName = field as FieldName;
-
             if (Array.isArray(messages) && messages[0]) {
-              setError(fieldName, {
-                type: "server",
-                message: messages[0],
-              });
+              setError(fieldName, { type: "server", message: messages[0] });
             }
           });
         }
-
-        if (result.message) {
-          setServerError(result.message);
-        }
-
+        setServerError(result.error || result.message || "Registration failed");
         return;
       }
 
-      // Registration successful
       router.push("/login?registered=true");
+      router.refresh();
     } catch {
       setServerError("Something went wrong. Please try again.");
     }
   };
 
   return (
-    <Card className="border-border/60 shadow-lg">
-      <CardHeader className="space-y-1 pb-6">
-        <CardTitle className="text-xl">Register</CardTitle>
-      </CardHeader>
+    <div className="w-full rounded-2xl border border-slate-100 bg-white p-6 shadow-xl shadow-slate-200/50 sm:p-8">
+      {serverError && (
+        <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+          {serverError}
+        </div>
+      )}
 
-      <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-          {serverError && (
-            <Alert variant="destructive">
-              <AlertDescription>{serverError}</AlertDescription>
-            </Alert>
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 sm:space-y-5">
+        <div>
+          <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-slate-700">
+            Full Name
+          </label>
+          <input
+            id="name"
+            type="text"
+            placeholder="John Doe"
+            {...register("name")}
+            className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition duration-200 focus:border-[#FF6347] focus:ring-2 focus:ring-[#FF6347]/20"
+          />
+          {errors.name && (
+            <p className="mt-1 text-xs text-red-500">{errors.name.message}</p>
           )}
+        </div>
 
-          {/* Name */}
-          <div className="space-y-2">
-            <Label htmlFor="name">Name</Label>
+        <div>
+          <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
+            Email Address
+          </label>
+          <input
+            id="email"
+            type="email"
+            placeholder="name@example.com"
+            {...register("email")}
+            className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition duration-200 focus:border-[#FF6347] focus:ring-2 focus:ring-[#FF6347]/20"
+          />
+          {errors.email && (
+            <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
+          )}
+        </div>
 
-            <Input
-              id="name"
-              type="text"
-              placeholder="Your Name"
-              {...register("name")}
-              aria-invalid={!!errors.name}
-            />
+        <div>
+          <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            placeholder="••••••••"
+            {...register("password")}
+            className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition duration-200 focus:border-[#FF6347] focus:ring-2 focus:ring-[#FF6347]/20"
+          />
+          {errors.password && (
+            <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
+          )}
+        </div>
 
-            {errors.name && (
-              <p className="text-sm text-destructive">{errors.name.message}</p>
-            )}
-          </div>
+        <div>
+          <label htmlFor="confirmPassword" className="mb-1.5 block text-sm font-medium text-slate-700">
+            Confirm Password
+          </label>
+          <input
+            id="confirmPassword"
+            type="password"
+            placeholder="••••••••"
+            {...register("confirmPassword")}
+            className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition duration-200 focus:border-[#FF6347] focus:ring-2 focus:ring-[#FF6347]/20"
+          />
+          {errors.confirmPassword && (
+            <p className="mt-1 text-xs text-red-500">{errors.confirmPassword.message}</p>
+          )}
+        </div>
 
-          {/* Email */}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-
-            <Input
-              id="email"
-              type="email"
-              placeholder="Your Email"
-              {...register("email")}
-              aria-invalid={!!errors.email}
-            />
-
-            {errors.email && (
-              <p className="text-sm text-destructive">{errors.email.message}</p>
-            )}
-          </div>
-
-          {/* Password */}
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-
-            <Input
-              id="password"
-              type="password"
-              placeholder="••••••••"
-              {...register("password")}
-              aria-invalid={!!errors.password}
-            />
-
-            {errors.password && (
-              <p className="text-sm text-destructive">
-                {errors.password.message}
-              </p>
-            )}
-          </div>
-
-          {/* Confirm Password */}
-          <div className="space-y-2">
-            <Label htmlFor="confirmPassword">Confirm Password</Label>
-
-            <Input
-              id="confirmPassword"
-              type="password"
-              placeholder="••••••••"
-              {...register("confirmPassword")}
-              aria-invalid={!!errors.confirmPassword}
-            />
-
-            {errors.confirmPassword && (
-              <p className="text-sm text-destructive">
-                {errors.confirmPassword.message}
-              </p>
-            )}
-          </div>
-
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Creating account..." : "Create account"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          style={{ cursor: isSubmitting ? "not-allowed" : "pointer" }}
+          className="w-full rounded-lg bg-[#FF6347] py-2.5 text-sm font-semibold text-white transition hover:bg-[#E55338] disabled:opacity-50"
+        >
+          {isSubmitting ? "Creating account..." : "Create Account"}
+        </button>
+      </form>
+    </div>
   );
 }

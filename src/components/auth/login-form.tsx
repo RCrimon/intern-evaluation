@@ -2,29 +2,15 @@
 
 import { useState } from "react";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-
 const loginFormSchema = z.object({
-  email: z.email("Invalid email address"),
-
+  email: z.string().email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
 });
 
 type LoginFormData = z.infer<typeof loginFormSchema>;
-
 type FieldName = keyof LoginFormData;
 
 type LoggedInUser = {
@@ -42,34 +28,17 @@ export default function LoginForm() {
     handleSubmit,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<LoginFormData>();
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginFormSchema),
+  });
 
   const onSubmit = async (data: LoginFormData) => {
     setServerError("");
 
-    const validationResult = loginFormSchema.safeParse(data);
-
-    if (!validationResult.success) {
-      validationResult.error.issues.forEach((issue) => {
-        const field = issue.path[0] as FieldName;
-
-        if (field) {
-          setError(field, {
-            type: "manual",
-            message: issue.message,
-          });
-        }
-      });
-
-      return;
-    }
-
     try {
       const response = await fetch("/api/auth/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
 
@@ -79,25 +48,16 @@ export default function LoginForm() {
         if (result.errors) {
           Object.entries(result.errors).forEach(([field, messages]) => {
             const fieldName = field as FieldName;
-
             if (Array.isArray(messages) && messages[0]) {
-              setError(fieldName, {
-                type: "server",
-                message: messages[0],
-              });
+              setError(fieldName, { type: "server", message: messages[0] });
             }
           });
         }
-
-        if (result.message) {
-          setServerError(result.message);
-        }
-
+        setServerError(result.error || result.message || "Login failed");
         return;
       }
 
-      // Login successful
-      setLoggedInUser(result.data.user);
+      setLoggedInUser(result.user || result.data?.user);
     } catch {
       setServerError("Something went wrong. Please try again.");
     }
@@ -105,96 +65,79 @@ export default function LoginForm() {
 
   return (
     <>
-      <Card className="border-border/60 shadow-lg">
-        <CardHeader className="space-y-1 pb-6">
-          <CardTitle className="text-xl">Sign in</CardTitle>
-        </CardHeader>
+      <div className="w-full rounded-2xl border border-slate-100 bg-white p-6 shadow-xl shadow-slate-200/50 sm:p-8">
+        {serverError && (
+          <div className="mb-5 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">
+            {serverError}
+          </div>
+        )}
 
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-            {serverError && (
-              <Alert variant="destructive">
-                <AlertDescription>{serverError}</AlertDescription>
-              </Alert>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 sm:space-y-5">
+          <div>
+            <label htmlFor="email" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Email Address
+            </label>
+            <input
+              id="email"
+              type="email"
+              placeholder="name@example.com"
+              {...register("email")}
+              className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition duration-200 focus:border-[#FF6347] focus:ring-2 focus:ring-[#FF6347]/20"
+            />
+            {errors.email && (
+              <p className="mt-1 text-xs text-red-500">{errors.email.message}</p>
             )}
+          </div>
 
-            {/* Email */}
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+          <div>
+            <label htmlFor="password" className="mb-1.5 block text-sm font-medium text-slate-700">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              placeholder="••••••••"
+              {...register("password")}
+              className="w-full rounded-lg border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition duration-200 focus:border-[#FF6347] focus:ring-2 focus:ring-[#FF6347]/20"
+            />
+            {errors.password && (
+              <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
+            )}
+          </div>
 
-              <Input
-                id="email"
-                type="email"
-                placeholder="Your Email"
-                {...register("email")}
-                aria-invalid={!!errors.email}
-              />
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            style={{ cursor: isSubmitting ? "not-allowed" : "pointer" }}
+            className="w-full rounded-lg bg-[#FF6347] py-2.5 text-sm font-semibold text-white transition hover:bg-[#E55338] disabled:opacity-50"
+          >
+            {isSubmitting ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+      </div>
 
-              {errors.email && (
-                <p className="text-sm text-destructive">
-                  {errors.email.message}
-                </p>
-              )}
-            </div>
-
-            {/* Password */}
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••••"
-                {...register("password")}
-                aria-invalid={!!errors.password}
-              />
-
-              {errors.password && (
-                <p className="text-sm text-destructive">
-                  {errors.password.message}
-                </p>
-              )}
-            </div>
-
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting ? "Signing in..." : "Sign in"}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
-
-      {/* Login Success Modal */}
-      <Dialog
-        open={!!loggedInUser}
-        onOpenChange={(open) => {
-          if (!open) {
-            setLoggedInUser(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader className="text-center sm:text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl">
+      {loggedInUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-2xl text-emerald-600">
               ✓
             </div>
-
-            <DialogTitle className="text-2xl">
-              Welcome back{loggedInUser ? `, ${loggedInUser.name}` : ""}!
-            </DialogTitle>
-
-            <DialogDescription className="pt-2 text-base">
-              You have successfully signed in to your account. Everything is
-              ready for you to continue.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="pt-4">
-            <Button className="w-full" onClick={() => setLoggedInUser(null)}>
+            <h3 className="text-xl font-bold text-slate-800">
+              Welcome back, {loggedInUser.name}!
+            </h3>
+            <p className="mt-2 text-sm text-slate-500">
+              You have successfully signed in to your account.
+            </p>
+            <button
+              onClick={() => setLoggedInUser(null)}
+              style={{ cursor: isSubmitting ? "not-allowed" : "pointer" }}
+              className="mt-6 w-full relative z-10 rounded-lg bg-[#FF6347] py-2 text-sm font-semibold text-white transition hover:bg-[#E55338]"
+            >
               Continue
-            </Button>
+            </button>
           </div>
-        </DialogContent>
-      </Dialog>
+        </div>
+      )}
     </>
   );
 }

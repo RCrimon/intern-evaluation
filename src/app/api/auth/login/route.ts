@@ -1,70 +1,63 @@
-import { NextResponse } from "next/server";
-import { z } from "zod";
+import { NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+import { connectDB } from '@/lib/db';
+import { User, IUser } from '@/models/User';
 
-import loginUser from "@/modules/auth/login.service";
-import { loginSchema } from "@/modules/auth/auth.validation";
+interface LoginRequestBody {
+  email?: string;
+  password?: string;
+}
 
-export async function POST(request: Request) {
+export async function POST(req: Request): Promise<NextResponse> {
   try {
-    const body = await request.json();
+    const body: LoginRequestBody = await req.json();
+    const { email, password } = body;
 
-    const validatedData = loginSchema.parse(body);
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email and password are required' },
+        { status: 400 }
+      );
+    }
 
-    const user = await loginUser(validatedData);
+    await connectDB();
+
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = (await User.findOne({ email: normalizedEmail }).exec()) as IUser | null;
+
+    if (!user || !user.password) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      );
+    }
+
+    const isPasswordValid: boolean = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return NextResponse.json(
+        { error: 'Invalid credentials' },
+        { status: 401 }
+      );
+    }
 
     return NextResponse.json(
       {
-        success: true,
-        message: "Login successful",
-        data: {
-          user,
+        message: 'Login successful',
+        user: {
+          id: user._id,
+          name: user.name,
+          email: user.email,
         },
       },
-      { status: 200 },
+      { status: 200 }
     );
-  } catch (error) {
-    if (error instanceof SyntaxError) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid JSON body",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed",
-          errors: z.flattenError(error).fieldErrors,
-        },
-        { status: 400 },
-      );
-    }
-
-    if (
-      error instanceof Error &&
-      error.message === "Invalid email or password"
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid email or password",
-        },
-        { status: 401 },
-      );
-    }
-
-    console.error("Login error:", error);
+  } catch (error: unknown) {
+    console.error('Login Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Internal Server Error';
 
     return NextResponse.json(
-      {
-        success: false,
-        message: "Something went wrong",
-      },
-      { status: 500 },
+      { error: errorMessage },
+      { status: 500 }
     );
   }
 }
